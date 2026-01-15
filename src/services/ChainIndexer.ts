@@ -51,20 +51,26 @@ export class ChainIndexer {
     }
   }
 
+  /**
+   * Main indexing loop.
+   * Keeps running while `isRunning` is true.
+   * Fetches events, saves them, and handles errors/reorgs.
+   */
   private async loop() {
     let currentRange = this.config.maxBlockRange || 1000;
-    let nextBatchLogs: Array<EventLog | Log> | null = null;
-    let nextBatchRange: { from: number; to: number } | null = null;
+    let nextBatchLogs: Array<EventLog | Log> | null = null; // Cache for pre-fetched logs
+    let nextBatchRange: { from: number; to: number } | null = null; // Range of pre-fetched logs
 
     while (this.isRunning) {
       try {
         const latestBlock = await this.provider.getBlockNumber();
-        const safeBlock = latestBlock - this.CONFIRMATIONS;
+        const safeBlock = latestBlock - this.CONFIRMATIONS; // Block depth to avoid reorgs
 
+        // If caught up, wait for new blocks
         if (this.currentBlock > safeBlock) {
           console.log(`[${this.config.name}] Caught up to safe block ${safeBlock} (latest: ${latestBlock}). Waiting...`);
           await this.sleep(this.POLL_INTERVAL);
-          nextBatchLogs = null; // Clear prefetch cache
+          nextBatchLogs = null; // Clear prefetch cache as chain might have moved
           continue;
         }
 
@@ -73,17 +79,19 @@ export class ChainIndexer {
 
         let logs: Array<EventLog | Log> = [];
 
-        // Use prefetch if valid
+        // Check if we have valid pre-fetched data
         if (nextBatchLogs && nextBatchRange && nextBatchRange.from === this.currentBlock && nextBatchRange.to === endBlock) {
           logs = nextBatchLogs;
           nextBatchLogs = null;
           nextBatchRange = null;
         } else {
+          // No prefetch available, waiting for fetch
           console.log(`[${this.config.name}] Fetching blocks ${this.currentBlock} to ${endBlock} (Range: ${currentRange})`);
           logs = await this.contract.queryFilter('*', this.currentBlock, endBlock);
         }
 
-        // --- PREFETCH NEXT BATCH ---
+        // --- PREFETCH NEXT BATCH (Optimization) ---
+        // While we save the current batch, start fetching the next one
         const nextStart: number = endBlock + 1;
         const nextEnd = Math.min(nextStart + currentRange, safeBlock);
         let prefetchPromise: Promise<Array<EventLog | Log>> | null = null;
@@ -93,18 +101,18 @@ export class ChainIndexer {
           prefetchPromise = this.contract.queryFilter('*', nextStart, nextEnd);
         }
 
-        // Save current batch
+        // Save current batch to database
         await this.saveEvents(logs);
 
-        // Update state
+        // Update state to move forward
         this.currentBlock = endBlock + 1;
 
-        // Restore range if needed
+        // Adaptive Batching: Increase range if successful (up to max)
         if (currentRange < (this.config.maxBlockRange || 1000)) {
           currentRange = Math.min(currentRange * 2, this.config.maxBlockRange || 1000);
         }
 
-        // Resolve prefetch
+        // Resolve prefetch promise for next iteration
         if (prefetchPromise) {
           try {
             nextBatchLogs = await prefetchPromise;
@@ -119,9 +127,11 @@ export class ChainIndexer {
       } catch (error: any) {
         console.error(`[${this.config.name}] Error in loop:`, error.message);
 
+        // Clear prefetch on error
         nextBatchLogs = null;
         nextBatchRange = null;
 
+        // Adaptive Batching: Reduce range on error
         if (currentRange > 100) {
           currentRange = Math.floor(currentRange / 2);
           console.log(`[${this.config.name}] Reduced block range to ${currentRange} due to error.`);
