@@ -25,5 +25,7 @@ const EventSchema: Schema = new Schema({
 
 // Compound unique index to prevent duplicates
 EventSchema.index({ chainId: 1, transactionHash: 1, logIndex: 1 }, { unique: true });
+// Compound index for efficient "last indexed block" queries
+EventSchema.index({ chainId: 1, contractAddress: 1, blockNumber: -1 });
 
 export const EventModel = mongoose.model<IEvent>('Event', EventSchema);
