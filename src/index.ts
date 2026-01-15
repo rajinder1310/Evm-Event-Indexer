@@ -3,7 +3,7 @@ import { config } from './config';
 import { IndexerService } from './services/indexer';
 import mongoose from 'mongoose';
 
-const indexer = new IndexerService(config.rpcUrl);
+const indexer = new IndexerService(config);
 
 async function main() {
   console.log('Starting EVM Event Indexer...');

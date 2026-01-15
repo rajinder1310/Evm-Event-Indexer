@@ -1,16 +1,20 @@
 
-import { JsonRpcProvider } from 'ethers';
+import { IndexerConfig } from '../types';
+import { ChainIndexer } from './ChainIndexer';
 
 export class IndexerService {
-  private provider: JsonRpcProvider;
+  private indexers: ChainIndexer[] = [];
 
-  constructor(rpcUrl: string) {
-    this.provider = new JsonRpcProvider(rpcUrl);
+  constructor(config: IndexerConfig) {
+    this.indexers = config.chains.map(chainConfig => new ChainIndexer(chainConfig));
   }
 
   async start() {
-    console.log('Indexer service started');
-    const blockNumber = await this.provider.getBlockNumber();
-    console.log(`Current block number: ${blockNumber}`);
+    console.log(`Starting ${this.indexers.length} chain indexers...`);
+
+    // Start all indexers concurrently
+    await Promise.all(this.indexers.map(indexer => indexer.start()));
+
+    console.log('All chain indexers started.');
   }
 }
