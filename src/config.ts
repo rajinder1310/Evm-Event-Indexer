@@ -5,5 +5,6 @@ dotenv.config();
 
 export const config = {
   rpcUrl: process.env.RPC_URL || 'http://localhost:8545',
-  dbUrl: process.env.DATABASE_URL || 'postgres://localhost:5432/indexer'
+  dbUrl: process.env.DATABASE_URL || 'postgres://localhost:5432/indexer',
+  mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/evm_indexer'
 };
